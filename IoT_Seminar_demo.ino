@@ -10,8 +10,8 @@
 //Defining Constants and Values
 const char* ssid     = "Zuhayr";// SSID of local network
 const char* password = "Zuhayr007";// Password on network
-char ssidx[] = "Zuhayr";
-char pass[] = "Zuhayr007";
+char ssidx[] = "";
+char pass[] = "";
 char auth[] = "0fadbf23e89348499ef6111f344f9564"; //Blynk Authentification KSey
 String APIKEY = "3e4a0763d0da4c27abb4894a7ecc7a9d";//Api Key
 String CityID = "934169";//City ID
