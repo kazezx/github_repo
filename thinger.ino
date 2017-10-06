@@ -3,12 +3,12 @@
 #include <ESP8266WiFi.h>
 #include <ThingerWifi.h>
 #include "DHT.h"
-#define USERNAME "kazezx"
-#define DEVICE_ID "nodemcu"
-#define DEVICE_CREDENTIAL "nodemcu_lolin_v3"
+#define USERNAME ""
+#define DEVICE_ID ""
+#define DEVICE_CREDENTIAL ""
 
-#define SSID "Zuhayr"
-#define SSID_PASSWORD "Zuhayr007"
+#define SSID ""
+#define SSID_PASSWORD ""
 // dht config
 #define DHTPIN D3
 #define DHTTYPE DHT11
