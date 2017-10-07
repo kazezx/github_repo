@@ -7,8 +7,8 @@
 #define USERNAME "kazezx"
 #define DEVICE_ID "nodemcu"
 #define DEVICE_CREDENTIAL "nodemcu_lolin_v3"
-#define SSID "Zuhayr"
-#define SSID_PASSWORD "Zuhayr007"
+#define SSID ""
+#define SSID_PASSWORD ""
 
 //Pins Configurations and Variables
 int humidity = 0;
