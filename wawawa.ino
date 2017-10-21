@@ -113,7 +113,7 @@ void loop() {
   }
 
   luminosity = converter(packet, ':', 2);
-  if (luminosity < 200 || luminosity > 1000) {
+  if (luminosity < 500 || luminosity > 1000) {
     sendNotification("Luminosity is high at " + String(luminosity) + " ." + "Automatic callibration will be performed or you may remotely activate the Light.");
   }
 
