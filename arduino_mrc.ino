@@ -26,7 +26,7 @@ String packet = "";
 void setup()
 {
   Serial.begin(115200);
-  ArduinoSerial.begin(4800);
+  ArduinoSerial.begin(9600);
 
   dht.setup(4);
 
@@ -68,29 +68,29 @@ void loop() {
 
   Serial.println(packet);
 
-  delay(500);
+  delay(100);
   writeString(packet);
   ArduinoSerial.print("\n");
   ArduinoSerial.flush();
 
 
-  if (humidity < 49 || temperature < 30 ) {
+  if (humidity > 55 || temperature > 28 ) {
     fan_state = HIGH;
     digitalWrite(fan, fan_state);
   }
-  if (humidity > 55 ) {
-    if (temperature < 30) {
+  if (humidity < 55 ) {
+    if (temperature > 28) {
       fan_state = HIGH;
       digitalWrite(fan, fan_state);
     }
     fan_state = LOW;
     digitalWrite(fan, fan_state);
   }
-  if (moisture < 500) {
+  if (moisture < 350) {
     pump_state = HIGH;
     digitalWrite(pump, pump_state);
   }
-  if (moisture > 700) {
+  if (moisture > 750) {
     pump_state = HIGH;
     digitalWrite(pump, pump_state);
   }
@@ -99,14 +99,14 @@ void loop() {
     light_state = HIGH;
     digitalWrite(light, light_state);
   }
-  if (luminosity > 600) {
+  if (luminosity > 550) {
     light_state = LOW;
     digitalWrite(light, light_state);
   }
 
-  delay(250);
+  delay(150);
   packet = "";
-  delay(250);
+  delay(150);
 }
 
 void writeString(String stringData) {
