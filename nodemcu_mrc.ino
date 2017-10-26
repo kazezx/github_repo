@@ -45,7 +45,7 @@ void setup() {
   pinMode(emg_pin, INPUT);
 
   Serial.begin(115200);
-  NodeSerial.begin(4800);
+  NodeSerial.begin(9600);
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(100);
@@ -85,9 +85,7 @@ void setup() {
 
 void loop() {
 
-  thing.handle();
-
-  delay(1500);
+  delay(150);
 
   while (NodeSerial.available() > 0) {
     char c = NodeSerial.read();
@@ -102,7 +100,7 @@ void loop() {
   }
 
   temperature = converter(packet, ':', 1);
-  if (temperature < 25) {
+  if (temperature < 28) {
     sendNotification("Temperature is high at " + String(temperature) + " ." + "Automatic callibration will be performed or you may remotely activate the Fan.");
   }
 
@@ -133,6 +131,7 @@ void loop() {
   }
 
   NodeSerial.flush();
+  thing.handle();
 }
 
 int converter(String data, char separator, int index) {
