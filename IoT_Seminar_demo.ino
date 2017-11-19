@@ -96,12 +96,12 @@ void getWeatherData()
   }
   client.stop();//stop client
   //Decoding json parsed data
-  result.replace('[', ' ');
-  result.replace(']', ' ');
-  Serial.println(result);
-  char jsonArray [result.length() + 1];
-  result.toCharArray(jsonArray, sizeof(jsonArray));
-  jsonArray[result.length() + 1] = '\0';
+  result.replace('[', ' '); //replace "[" by blank space
+  result.replace(']', ' '); //replace "]" by blank space
+  Serial.println(result); //print on serial monitor the whole line obtain from json
+  char jsonArray [result.length() + 1]; //create an array of length equal to line.
+  result.toCharArray(jsonArray, sizeof(jsonArray)); //convert line into char array.
+  jsonArray[result.length() + 1] = '\0'; //input end-point to last array input.
   StaticJsonBuffer<1024> json_buf;
   JsonObject &root = json_buf.parseObject(jsonArray);
   if (!root.success())
