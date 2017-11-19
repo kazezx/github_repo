@@ -8,8 +8,8 @@
 #include <WiFiClientSecureRedirect.h>
 
 //Defining Constants and Values
-const char* ssid     = "Zuhayr";// SSID of local network
-const char* password = "Zuhayr007";// Password on network
+const char* ssid     = "";// SSID of local network
+const char* password = "";// Password on network
 char ssidx[] = "";
 char pass[] = "";
 char auth[] = "0fadbf23e89348499ef6111f344f9564"; //Blynk Authentification KSey
