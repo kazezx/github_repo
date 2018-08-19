@@ -1,0 +1,17 @@
+using System;
+using System.Net;
+namespace Pinger
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            var request = (HttpWebRequest)WebRequest.Create("https://www.facebook.com");
+            request.Timeout = 15000;
+            request.Method = "HEAD";
+            var response = (HttpWebResponse)request.GetResponse();
+            Console.WriteLine(response.StatusCode.ToString());
+            Console.ReadLine();
+        }
+    }
+}
