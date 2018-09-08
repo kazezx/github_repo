@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Data.OleDb;
+using System.Linq;
 
 namespace ConsoleApp1
 {
@@ -7,9 +9,11 @@ namespace ConsoleApp1
     {
         static void Main(string[] args)
         {
+            List<string> Licenses = new List<string>();
+            List<int> counter = new List<int>();
             Console.Write("Enter Your Domain : ");
             string domain = Console.ReadLine().ToUpper();
-            string query = "SELECT License FROM "+domain+" WHERE ";
+            string query = "SELECT [License],[Counter] FROM ["+domain+"] WHERE ";
             Console.Write("Enter Your Query : ");
             string[] services = Console.ReadLine().Split(';');
             int query_size = services.Length - 1;
@@ -23,7 +27,7 @@ namespace ConsoleApp1
                 query = query + services[i];
 
             }
-            query = query + ";";
+            query = query + "ORDER BY Counter ASC" + ";";
             Console.WriteLine(query);
             Console.ReadLine(); 
             string connectionString = @"Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\Users\Kaze\Documents\GRDF.mdb";
@@ -36,18 +40,25 @@ namespace ConsoleApp1
                     connection.Open();
                     using (OleDbDataReader reader = command.ExecuteReader())
                     {
-                        Console.WriteLine("Licenses : ");
                         while (reader.Read())
                         {
-                            Console.WriteLine(reader.GetValue(0).ToString());
+                            Licenses.Add(reader.GetValue(0).ToString());
+                            counter.Add(Convert.ToInt32(reader.GetValue(1)));
                         }
                     }
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine(ex.Message);
-                } 
+                }
             }
+            try
+            {
+                int index = counter.Min();
+                string lic = Licenses[counter.IndexOf(index)];
+                Console.WriteLine(lic);
+            }
+            catch (Exception) { Console.WriteLine("No such Licenses available"); }
             Console.ReadKey();
 
         }
