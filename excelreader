@@ -1,0 +1,26 @@
+ Excel.Application xlApp = new Excel.Application();
+            Excel.Workbook xlWorkbook = xlApp.Workbooks.Open(@"C:\Users\Kaze\Downloads\Book.xlsx");
+            Excel._Worksheet xlWorksheet = xlWorkbook.Sheets[1];
+            Excel.Range xlRange = xlWorksheet.get_Range("B2","B5"); ;
+            int rowCount = xlRange.Rows.Count;
+            int colCount = 2;
+
+            string[,] tsReqs = new string[rowCount, colCount];
+
+            for (int i = 1; i <= rowCount; i++)
+            {
+                for (int j = 1; j <= colCount; j++)
+                {
+                    string str = xlRange.Cells[i, j].Text;
+                    tsReqs[i - 1, j - 1] = str;
+                }
+            }
+            //cleanup
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            Marshal.ReleaseComObject(xlRange);
+            Marshal.ReleaseComObject(xlWorksheet);
+            xlWorkbook.Close();
+            Marshal.ReleaseComObject(xlWorkbook);
+            xlApp.Quit();
+            Marshal.ReleaseComObject(xlApp);
