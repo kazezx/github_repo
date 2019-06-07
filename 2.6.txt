@@ -1,0 +1,1183 @@
+public static int BlobCounter_test(Bitmap bitmap, Bitmap img1, Bitmap img2, string folderpath, List<string> names, int val)
+        {
+            BlobCounter LargeblobCounter = new BlobCounter();
+            BlobCounter SmallblobCounter = new BlobCounter();
+            int counter = 0;
+
+            Graphics g = Graphics.FromImage(bitmap);
+            Bitmap main = new Bitmap(bitmap);
+            Bitmap ref_img = new Bitmap(img1);
+            Bitmap com_img = new Bitmap(img2);
+
+            using (Graphics x1 = Graphics.FromImage(ref_img))
+            {
+                x1.DrawImage(main, 0, 0);
+            }
+
+            using (Graphics y1 = Graphics.FromImage(com_img))
+            {
+                y1.DrawImage(main, 0, 0);
+            }
+            //bitmap.Save("C:\\test\\alay.png", ImageFormat.Png);
+            //com_img.Save("C:\\test\\bcom.png", ImageFormat.Png);
+            //ref_img.Save("C:\\test\\cref.png", ImageFormat.Png);
+            //filtering the blobs before searching for blobs 
+            LargeblobCounter.ObjectsOrder = ObjectsOrder.Size;
+            SmallblobCounter.ObjectsOrder = ObjectsOrder.Size;
+            LargeblobCounter.FilterBlobs = true;
+            LargeblobCounter.MinHeight = 250;
+            LargeblobCounter.MinWidth = 250;
+            LargeblobCounter.ProcessImage(bitmap);
+            SmallblobCounter.FilterBlobs = true;
+            SmallblobCounter.MinHeight = 30;
+            SmallblobCounter.MinWidth = 30;
+            SmallblobCounter.MaxHeight = 249;
+            //SmallblobCounter.MaxWidth = 500;
+            SmallblobCounter.ProcessImage(bitmap);            
+            Blob[] blobs_large = LargeblobCounter.GetObjectsInformation();
+            Blob[] blobs_small = SmallblobCounter.GetObjectsInformation();                       
+            Graphics gRef = Graphics.FromImage(img1);
+            Graphics gCom = Graphics.FromImage(img2);
+            Pen Pens = new Pen(Color.Red, 6);
+            List<string> detected_blobs = new List<string>();
+            List<string> detected_Largeblobs = new List<string>();
+            foreach (Blob b in blobs_large)
+            {
+                List<IntPoint> edgePoints = LargeblobCounter.GetBlobsEdgePoints(b);
+                Bitmap croppedImage_ref = Resize(img1.Clone(b.Rectangle, img1.PixelFormat), b.Rectangle.Width, b.Rectangle.Height);
+                Bitmap croppedImage_com = Resize(img2.Clone(b.Rectangle, img2.PixelFormat), b.Rectangle.Width, b.Rectangle.Height);
+                croppedImage_ref = RemoveNoise(croppedImage_ref);
+                croppedImage_com = RemoveNoise(croppedImage_com);
+                croppedImage_ref = AdjustContrast(croppedImage_ref);
+                croppedImage_com = AdjustContrast(croppedImage_com);
+                //croppedImage_com.Save("C:\\test\\com.png", ImageFormat.Png);
+                //croppedImage_ref.Save("C:\\test\\ref.png", ImageFormat.Png);
+                List<string> block1 = new List<string>();
+                List<string> block2 = new List<string>();
+
+                var engine1 = new TesseractEngine(@"./tessdata", "eng", EngineMode.Default);
+                var engine2 = new TesseractEngine(@"./tessdata", "eng", EngineMode.Default);
+
+                var page_ref = engine1.Process(croppedImage_ref);
+                var iter_ref = page_ref.GetIterator();
+                do
+                {
+                    try
+                    {
+                        block1.Add((Regex.Replace(iter_ref.GetText(PageIteratorLevel.TextLine), @"\t|\n|\r", "")));
+                    }
+                    catch (Exception) { block1.Add(""); }
+
+                }
+                while (iter_ref.Next(PageIteratorLevel.TextLine));
+                var page_com = engine2.Process(croppedImage_com);
+                var iter_com = page_com.GetIterator();
+                do
+                {
+                    try
+                    {
+                        block2.Add((Regex.Replace(iter_com.GetText(PageIteratorLevel.TextLine), @"\t|\n|\r", "")));
+                    }
+                    catch (Exception) { block2.Add(""); }
+                }
+                while (iter_com.Next(PageIteratorLevel.TextLine));
+                var similarity = new NormalizedLevenshtein();
+                var lcs = new MetricLCS();
+                var snd_similarity = new Damerau();
+                var leve = new Levenshtein();
+                var jaro = new JaroWinkler();
+                bool blob_handled = false;
+                int blob_y = b.Rectangle.Y;
+                int blob_x = b.Rectangle.X;
+                int page_height = bitmap.Height;
+                int page_width = bitmap.Width;
+                if (blob_y > (page_height * 0.70))
+                {
+                    string dash_text1 = (Regex.Replace(page_ref.GetText(), @"\t|\n|\r", "")).ToLower();
+                    string dash_text2 = (Regex.Replace(page_com.GetText(), @"\t|\n|\r", "")).ToLower();
+                    string aldash_text1 = Regex.Replace(dash_text1, @"[\d-]", string.Empty).Trim();
+                    string aldash_text2 = Regex.Replace(dash_text2, @"[\d-]", string.Empty).Trim();
+                    int text_size = (aldash_text1.Length + aldash_text2.Length) / 2;
+                    if (text_size < 20) { continue; }
+                    else
+                    {
+                        double check_dist = similarity.Distance(aldash_text1, aldash_text2);
+                        double check_sim = similarity.Similarity(dash_text1, dash_text2);
+                        if (check_dist < 0.4 && check_sim > 0.5) { continue; }
+                    }
+                }
+                if (blob_y > (page_height * 0.40) && blob_y < (page_height * 0.8))
+                {
+
+                    string dash_text1 = Regex.Replace(page_ref.GetText(), @"[^0-9a-zA-Z]+", ".");
+                    string dash_text2 = Regex.Replace(page_com.GetText(), @"[^0-9a-zA-Z]+", ".");
+
+                    string date = GetFirstDateFromString(dash_text1).ToString();
+                    string date2 = GetFirstDateFromString(dash_text2).ToString();
+                    double check_string_sim = similarity.Similarity(date, date2);
+                    if (check_string_sim <= 0.98)
+                    {
+                        if (blob_handled == false)
+                        {
+                            bool drawn = false;
+                            foreach (Blob x in blobs_large)
+                            {
+                                if (detected_Largeblobs.Contains(x.ID.ToString()))
+                                {
+                                    drawn = x.Rectangle.IntersectsWith(b.Rectangle);
+                                    if (drawn == true) { break; }
+                                }
+                            }
+                            if (drawn == false)
+                            {
+                                gCom.DrawRectangle(Pens, b.Rectangle);
+                                gRef.DrawRectangle(Pens, b.Rectangle);
+                                detected_Largeblobs.Add(b.ID.ToString());
+                                counter++; blob_handled = true;
+                            }
+                        }
+                        continue;
+                    }
+
+                }
+                if (block1.Count == 0 || block2.Count == 0)
+                {
+                    continue;
+                }
+                if (block1.Count == block2.Count)
+                {
+                    double distance = 0;
+                    double text_meaning = 0;
+                    bool meaningful = false;
+                    double conver = block1.Count;
+                    double math_jaro = 0;
+                    int count_jaro = 0;
+                    for (int i = 0; i < block1.Count; i++)
+                    {
+                        string text1 = (Regex.Replace(block1[i], @"\s", "")).ToLower();
+                        string text2 = (Regex.Replace(block2[i], @"\s", "")).ToLower();
+
+                        bool LineChecker = false;
+                        double Similarity_val = similarity.Distance(text1, text2);
+                        double typo_val = jaro.Distance(text1, text2);
+
+                        string var1 = Regex.Replace(text1, @"[^0-9a-zA-Z]+", " ");
+                        string var2 = Regex.Replace(text2, @"[^0-9a-zA-Z]+", " ");
+                        var first = var1.Split(' ');
+                        var second = var2.Split(' ');
+                        var primary = first.Length > second.Length ? first : second;
+                        var secondary = primary == second ? first : second;
+                        var difference = primary.Intersect(secondary).ToArray();
+
+                        List<string> list1 = first.ToList();
+                        List<string> list2 = second.ToList();
+
+                        for (int a = 0; a < difference.Length; a++)
+                        {
+                            try
+                            {
+                                var1 = var1.Replace(difference[a], "");
+                                var2 = var2.Replace(difference[a], "");
+                            }
+                            catch (Exception) { }
+                        }
+                        double simv = jaro.Distance(var1, var2);
+                        double avg_var = (var1.Length + var2.Length) / 2;
+                        double damerau_v = snd_similarity.Distance(var1, var2);
+                        double percent = damerau_v / avg_var;
+                        if (Similarity_val >= 0.50)
+                        {
+                            distance += Similarity_val;
+                            //Fix Name Typo for Large here!!!
+                            
+                            if (Similarity_val > 0.5 && (typo_val > 0.1 || typo_val <0.3))
+                            {
+                                string var_1 = Regex.Replace(block1[i], @"[^0-9a-zA-Z]+", " ");
+                                string var_2 = Regex.Replace(block2[i], @"[^0-9a-zA-Z]+", " ");
+                                double avg_varx = (var_1.Length + var_2.Length) / 2;
+                                double damerau_vx = snd_similarity.Distance(var_1, var_2);
+                                double percentx = damerau_v / avg_varx;
+                                if (percentx >= 0.55) { meaningful = true; }
+                                LineChecker = true;
+                            }
+                        }  
+                        else if (Similarity_val >= 0.40 && percent <=0.7)
+                        {
+                            meaningful = true;
+                        }
+                        if ((Similarity_val < 0.25 && Similarity_val != 0 && Similarity_val > 0.1) || LineChecker == true)
+                        {
+                            bool diff_name = false;
+                            math_jaro = jaro.Similarity(text1, text2);
+                            if (math_jaro > 0.70 && math_jaro <= 0.98)
+                            {
+                                var firstz = block1[i].Split(' ');
+                                var secondz = block2[i].Split(' ');
+                                var primaryz = firstz.Length > secondz.Length ? firstz : secondz;
+                                var secondaryz = primaryz == secondz ? firstz : secondz;
+                                var differencez = primaryz.Except(secondaryz).ToArray();
+                                try
+                                {
+                                    diff_name = Processor.CheckString(differencez[0]);
+                                }
+                                catch (Exception)
+                                {
+                                    double levenstein = similarity.Distance(text1, text2);
+                                    if (levenstein > 0.6)
+                                    {
+                                        diff_name = true;
+                                    }
+                                    else
+                                    {
+                                        diff_name = false;
+                                        break;
+                                    }
+                                }
+                                if (diff_name == false)
+                                {
+
+                                    string dash_text1 = (Regex.Replace(page_ref.GetText(), @"\t|\n|\r", "")).ToLower();
+                                    string dash_text2 = (Regex.Replace(page_com.GetText(), @"\t|\n|\r", "")).ToLower();
+                                    string digitOnly1 = Regex.Replace(dash_text1, "[^0-9]", "");
+                                    string digitOnly2 = Regex.Replace(dash_text2, "[^0-9]", "");
+                                    double levenstein = similarity.Distance(text1, text2);
+                                    double levenstein_num = similarity.Similarity(digitOnly1, digitOnly2);
+                                    if (levenstein > 0.6) { diff_name = true; }
+                                    //if (levenstein_num >0.6) { diff_name = true; }
+                                }
+                            }
+                            if (diff_name == true && typo_val > 0.05)
+                            {
+                                if (blob_handled == false)
+                                {
+                                    bool drawn = false;
+                                    foreach (Blob x in blobs_large)
+                                    {
+                                        if (detected_Largeblobs.Contains(x.ID.ToString()))
+                                        {                                            
+                                            drawn = x.Rectangle.IntersectsWith(b.Rectangle);
+                                            if (drawn == true) { break; }
+                                        }
+                                    }
+                                    if (drawn == false)
+                                    {
+                                        gCom.DrawRectangle(Pens, b.Rectangle);
+                                        gRef.DrawRectangle(Pens, b.Rectangle);
+                                        detected_Largeblobs.Add(b.ID.ToString());
+                                        counter++; blob_handled = true;
+                                    }
+                                }                                                                
+                                break;
+                            }
+                        }
+                    }
+                    if ((text_meaning / count_jaro) > 0.85)
+                    {
+                        meaningful = true;
+                    }
+                    if ((distance / conver) > 0.50 || meaningful == true)
+                    {
+                        if (blob_handled == false)
+                        {
+                            bool drawn = false;
+                            foreach (Blob x in blobs_large)
+                            {
+                                if (detected_Largeblobs.Contains(x.ID.ToString()))
+                                {
+                                    drawn = x.Rectangle.IntersectsWith(b.Rectangle);
+                                    if (drawn == true) { break; }
+                                }
+                            }
+                            if (drawn == false)
+                            {
+                                gCom.DrawRectangle(Pens, b.Rectangle);
+                                gRef.DrawRectangle(Pens, b.Rectangle);
+                                detected_Largeblobs.Add(b.ID.ToString());
+                                counter++; blob_handled = true;
+                            }
+                        }
+                        continue;
+                    }
+                }
+                else
+                {
+                    double distance = 0.0;
+                    int block_count = Math.Max(block1.Count, block2.Count);
+                    for (int zi = 0; zi < block_count + 1; zi++)
+                    {
+                        try
+                        {
+                            string dash_text1 = (Regex.Replace(block1[zi], @"\s", "")).ToLower();
+                            string dash_text2 = (Regex.Replace(block2[zi], @"\s", "")).ToLower();
+                            double dash_Similarity_val = similarity.Distance(dash_text1, dash_text2);
+                            if (dash_Similarity_val > 0.50)
+                            {
+                                distance += dash_Similarity_val;
+                            }
+                        }
+                        catch (Exception)
+                        {
+                            bool meaningful = false;
+                            string dash_text1 = (Regex.Replace(page_ref.GetText(), @"\t|\n|\r", "")).ToLower();
+                            string dash_text2 = (Regex.Replace(page_com.GetText(), @"\t|\n|\r", "")).ToLower();
+                            double dash_Similarity_val = similarity.Distance(dash_text1, dash_text2);
+                            var lcs_metric = lcs.Distance(dash_text1, dash_text2);
+                            var damerau_val = snd_similarity.Distance(dash_text1, dash_text2);
+                            var dam_high = Math.Max(dash_text1.Length, dash_text2.Length);
+                            var dam = damerau_val / dam_high;
+                            double weight = (dash_Similarity_val + lcs_metric + dam) / 3.0;
+                            if (weight > 0.50)
+                            {
+                                double lcms = jaro.Similarity(dash_text1, dash_text2);
+                                if (lcms < 0.75)
+                                {
+                                    meaningful = true;
+                                }
+                                else
+                                {
+                                    break;
+                                }
+                            }
+                            else if (weight < 0.5)
+                            {
+                                var dam_high2 = Math.Max(dash_text1.Length, dash_text2.Length);
+                                var dam_low2 = Math.Min(dash_text1.Length, dash_text2.Length);
+                                double diffe = dam_high2 - dam_low2;
+                                var dam2 = diffe / dam_high2;
+                                if (dam2 > 0.3)
+                                {
+                                    meaningful = true;
+                                }
+                                var jw = new LongestCommonSubsequence();
+                                double jw_val = jw.Distance(dash_text1, dash_text2);
+                                double avg = (dash_text1.Length + dash_text2.Length) / 2;
+                                double avg_percent = jw_val / avg;
+                                if (avg_percent <=0.6)
+                                {
+                                    meaningful = true;
+                                }
+                            }
+                            if (((distance / block_count) > 0.50 && meaningful == true) || ((distance / block_count) > 0.80 || meaningful == true))
+                            {
+                                if (blob_handled == false)
+                                {
+                                    bool drawn = false;
+                                    foreach (Blob x in blobs_large)
+                                    {
+                                        if (detected_Largeblobs.Contains(x.ID.ToString()))
+                                        {
+                                            drawn = x.Rectangle.IntersectsWith(b.Rectangle);
+                                            if (drawn == true) { break; }
+                                        }
+                                    }
+                                    if (drawn == false)
+                                    {
+                                        gCom.DrawRectangle(Pens, b.Rectangle);
+                                        gRef.DrawRectangle(Pens, b.Rectangle);
+                                        detected_Largeblobs.Add(b.ID.ToString());
+                                        counter++; blob_handled = true;
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                int x_coor = b.Rectangle.X;
+                int y_coor = b.Rectangle.Y;
+                int max_height = bitmap.Height;
+                int max_width = bitmap.Width;
+                if (y_coor <= (max_height * 0.4))
+                {
+                    List<string> new_block1 = new List<string>();
+                    List<string> new_block2 = new List<string>();
+                    foreach (string a in block1)
+                    {
+                        if (a.Length > 10) { new_block1.Add(a); }
+                    }
+                    foreach (string a in block2)
+                    {
+                        if (a.Length > 10) { new_block2.Add(a); }
+                    }
+                    try
+                    {
+                        for (int i = 0; i < new_block1.Count; i++)
+                        {
+                            string alpha1 = Regex.Replace(new_block1[i], "[^0-9a-zA-Z]+", " ");
+                            string alpha2 = Regex.Replace(new_block2[i], "[^0-9a-zA-Z]+", " ");
+                            alpha1 = Regex.Replace(alpha1, @"[\d-]", string.Empty).Trim().ToLower();
+                            alpha2 = Regex.Replace(alpha2, @"[\d-]", string.Empty).Trim().ToLower();
+                            double check_alpha = jaro.Distance(alpha1, alpha2);
+                            double check_sim = similarity.Similarity(alpha1, alpha2);
+                            if (check_alpha <= 0.8 && check_sim <= 0.7)
+                            {
+                                var array_alpha1 = alpha1.Split(' ');
+                                var array_alpha2 = alpha2.Split(' ');
+
+                                List<string> list_alpha1 = array_alpha1.ToList();
+                                List<string> list_alpha2 = array_alpha2.ToList();
+
+                                var order = list_alpha1.SequenceEqual(list_alpha2);
+                                if (order == false && (list_alpha1.Count == list_alpha2.Count))
+                                {
+                                    if (blob_handled == false)
+                                    {
+                                        bool drawn = false;
+                                        foreach (Blob x in blobs_large)
+                                        {
+                                            if (detected_Largeblobs.Contains(x.ID.ToString()))
+                                            {
+                                                drawn = x.Rectangle.IntersectsWith(b.Rectangle);
+                                                if (drawn == true) { break; }
+                                            }
+                                        }
+                                        if (drawn == false)
+                                        {
+                                            gCom.DrawRectangle(Pens, b.Rectangle);
+                                            gRef.DrawRectangle(Pens, b.Rectangle);
+                                            detected_Largeblobs.Add(b.ID.ToString());
+                                            counter++; blob_handled = true;
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception) { }
+                }
+                engine2.Dispose();
+                engine1.Dispose();
+                croppedImage_ref.Dispose();
+                croppedImage_com.Dispose();
+            }
+            foreach (Blob b in blobs_small)
+            {
+                List<IntPoint> edgePoints = SmallblobCounter.GetBlobsEdgePoints(b);
+                Bitmap croppedImage_ref = MakeBoldSmall(img1.Clone(b.Rectangle, img1.PixelFormat));
+                Bitmap croppedImage_com = MakeBoldSmall(img2.Clone(b.Rectangle, img2.PixelFormat));
+                /*
+                using (Graphics gB = Graphics.FromImage(croppedImage_ref))
+                {
+                    gB.DrawRectangle(new Pen(Brushes.Blue, 15), new Rectangle(0, 0, croppedImage_ref.Width, croppedImage_ref.Height));
+                }
+                using (Graphics gB2 = Graphics.FromImage(croppedImage_com))
+                {
+                    gB2.DrawRectangle(new Pen(Brushes.Blue, 15), new Rectangle(0, 0, croppedImage_com.Width, croppedImage_com.Height));
+                }*/
+                croppedImage_ref = Resize(croppedImage_ref, b.Rectangle.Width * 3, b.Rectangle.Height * 3);
+                croppedImage_com = Resize(croppedImage_com, b.Rectangle.Width * 3, b.Rectangle.Height * 3);
+                croppedImage_ref = RemoveNoise(croppedImage_ref);
+                croppedImage_com = RemoveNoise(croppedImage_com);
+                croppedImage_ref = AdjustContrast(croppedImage_ref);
+                croppedImage_com = AdjustContrast(croppedImage_com);
+
+                croppedImage_com.Save("C:\\test\\com.png", ImageFormat.Png);
+                croppedImage_ref.Save("C:\\test\\ref.png", ImageFormat.Png);
+                List<string> block1 = new List<string>();
+                List<string> block2 = new List<string>();
+
+                var engine1 = new TesseractEngine(@"./tessdata", "eng", EngineMode.Default);
+                var engine2 = new TesseractEngine(@"./tessdata", "eng", EngineMode.Default);
+
+                var page_ref = engine1.Process(croppedImage_ref);
+                var iter_ref = page_ref.GetIterator();
+                var alltext_ref = page_ref.GetText();
+
+                do
+                {
+                    try
+                    {
+                        block1.Add((Regex.Replace(iter_ref.GetText(PageIteratorLevel.TextLine), @"\t|\n|\r", "")));
+                    }
+                    catch (Exception) { block1.Add(""); }
+
+                }
+                while (iter_ref.Next(PageIteratorLevel.TextLine));            
+                var page_com = engine2.Process(croppedImage_com);
+                var iter_com = page_com.GetIterator();
+                var alltext_com = page_com.GetText();
+                do
+                {
+                    try
+                    {
+                        block2.Add((Regex.Replace(iter_com.GetText(PageIteratorLevel.TextLine), @"\t|\n|\r", "")));
+                    }
+                    catch (Exception) { block2.Add(""); }
+                }
+                while (iter_com.Next(PageIteratorLevel.TextLine));
+
+
+                var similarity = new NormalizedLevenshtein();
+                var lcs = new MetricLCS();
+                var snd_similarity = new Damerau();
+                var leve = new Levenshtein();
+                var jaro = new JaroWinkler();
+                bool blob_handled = false;
+
+                if (block1.Count == 1 || block2.Count == 1)
+                {
+                    if (block1[0] == "" || block2[0] == "")
+                    { continue; }
+                }
+                if (block1.Count == block2.Count)
+                {
+
+                    double distance = 0;
+                    double text_meaning = 0;
+                    bool meaningful = false;
+                    double math_jaro = 0;
+                    double conver = block1.Count;
+                    int count_jaro = 0;
+                    int swap_count = 0;
+                    int blob_y = b.Rectangle.Y;
+                    int blob_x = b.Rectangle.X;
+                    int page_height = bitmap.Height;
+                    int page_width = bitmap.Width;
+                    int blob_height = b.Rectangle.Height;
+                    int blob_Width = b.Rectangle.Width;
+
+                    if (blob_height <= 250 && blob_Width <= 250)
+                    {
+                        string dash_text1 = (Regex.Replace(page_ref.GetText(), @"\t|\n|\r", "")).ToLower();
+                        string dash_text2 = (Regex.Replace(page_com.GetText(), @"\t|\n|\r", "")).ToLower();
+                        string dash_num1 = Regex.Replace(dash_text1, @"[^\d]", "");
+                        string dash_num2 = Regex.Replace(dash_text2, @"[^\d]", "");
+                        if (dash_text1.Length == dash_text2.Length)
+                        {
+                            double digit_val = similarity.Similarity(dash_num1, dash_num2);
+                            if (digit_val < 0.9)
+                            {
+                                if (blob_handled == false)
+                                {
+                                    bool drawn = false;
+                                    foreach (Blob x in blobs_large)
+                                    {
+                                        if (detected_Largeblobs.Contains(x.ID.ToString()))
+                                        {
+                                            drawn = x.Rectangle.IntersectsWith(b.Rectangle);
+                                            if (drawn == true) { break; }
+                                        }
+                                    }
+                                    if (drawn == false)
+                                    {
+                                        gCom.DrawRectangle(Pens, b.Rectangle);
+                                        gRef.DrawRectangle(Pens, b.Rectangle);
+                                        detected_blobs.Add(b.ID.ToString());
+                                        counter++; blob_handled = true;
+                                    }
+                                }
+                                continue;
+                            }
+                        }
+
+                    }
+                    if (blob_height <= 250 && blob_y < (page_height * 0.8))
+                    {
+                        for (int i = 0; i < block1.Count; i++)
+                        {
+                            string dash_text1 = (Regex.Replace(block1[i], @"\t|\n|\r", "")).ToLower();
+                            string dash_text2 = (Regex.Replace(block2[i], @"\t|\n|\r", "")).ToLower();
+                            double letters;
+                            double text1 = dash_text1.Length;
+                            double text2 = dash_text2.Length;
+                            if (dash_text1.Length < dash_text2.Length)
+                            {
+                                letters = (text1 / text2);
+                            }
+                            else { letters = (text2 / text1); }
+                            if (letters > 0.75)
+                            {
+                                string var1 = Regex.Replace(dash_text1, @"[^0-9a-zA-Z]+", " ");
+                                string var2 = Regex.Replace(dash_text2, @"[^0-9a-zA-Z]+", " ");
+                                var first = var1.Split(' ');
+                                var second = var2.Split(' ');
+                                var primary = first.Length > second.Length ? first : second;
+                                var secondary = primary == second ? first : second;
+                                var difference = primary.Intersect(secondary).ToArray();
+
+                                List<string> list1 = first.ToList();
+                                List<string> list2 = second.ToList();
+
+                                for (int a = 0; a < difference.Length; a++)
+                                {
+                                    try
+                                    {
+                                        var1 = var1.Replace(difference[a], "");
+                                        var2 = var2.Replace(difference[a], "");
+                                    }
+                                    catch (Exception) { }
+                                }
+
+                                double text_val = similarity.Similarity(var1, var2);
+                                if (text_val < 0.8)
+                                {
+                                    if (blob_handled == false)
+                                    {
+                                        bool drawn = false;
+                                        foreach (Blob x in blobs_large)
+                                        {
+                                            if (detected_Largeblobs.Contains(x.ID.ToString()))
+                                            {
+                                                drawn = x.Rectangle.IntersectsWith(b.Rectangle);
+                                                if (drawn == true) { break; }
+                                            }
+                                        }
+                                        if (drawn == false)
+                                        {
+                                            gCom.DrawRectangle(Pens, b.Rectangle);
+                                            gRef.DrawRectangle(Pens, b.Rectangle);
+                                            detected_blobs.Add(b.ID.ToString());
+                                            counter++; blob_handled = true;
+                                        }
+                                    }
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                        
+                    if (blob_y > (page_height * 0.70))
+                    {
+                        string dash_text1 = (Regex.Replace(page_ref.GetText(), @"\t|\n|\r", "")).ToLower();
+                        string dash_text2 = (Regex.Replace(page_com.GetText(), @"\t|\n|\r", "")).ToLower();
+                        dash_text1 = Regex.Replace(dash_text1, @"[^0-9a-zA-Z]+", " ");
+                        dash_text2 = Regex.Replace(dash_text2, @"[^0-9a-zA-Z]+", " ");
+                        string aldash_text1 = Regex.Replace(dash_text1, @"[\d-]", string.Empty).Trim();
+                        string aldash_text2 = Regex.Replace(dash_text2, @"[\d-]", string.Empty).Trim();
+                        int text_size = (aldash_text1.Length + aldash_text2.Length)/2;                        
+                        if (text_size < 20) { continue; }
+                        else
+                        {
+                            double check_dist = similarity.Distance(aldash_text1, aldash_text2);
+                            double check_sim = similarity.Similarity(dash_text1, dash_text2);
+                            if (check_dist < 0.4 && check_sim > 0.5) { continue; }
+                        }
+                    }
+                    if (blob_x < (page_width * 0.5)&&blob_y<(page_height*0.35))
+                    {
+                        string dash_text1 = (Regex.Replace(page_ref.GetText(), @"\t|\n|\r", "")).ToLower();
+                        string dash_text2 = (Regex.Replace(page_com.GetText(), @"\t|\n|\r", "")).ToLower();
+                        dash_text1 = Regex.Replace(dash_text1, @"[^0-9a-zA-Z]+", "").Trim();
+                        dash_text2 = Regex.Replace(dash_text2, @"[^0-9a-zA-Z]+", "").Trim();                        
+                        string aldash_text1 = Regex.Replace(dash_text1, @"[\d-]", string.Empty).Trim();
+                        string aldash_text2 = Regex.Replace(dash_text2, @"[\d-]", string.Empty).Trim();
+                        int text_size = (aldash_text1.Length + aldash_text2.Length) / 2;                        
+                        if (aldash_text1.Contains("tva") == true || aldash_text2.Contains("tva") == true || text_size <= 25)
+                        {
+                            double check_dist = similarity.Distance(aldash_text1, aldash_text2);
+                            double check_sim = similarity.Similarity(dash_text1, dash_text2);
+                            if (check_dist < 0.4 && check_sim > 0.5) { continue; }
+                        }
+                    }
+
+                    if (blob_y > (page_height * 0.35) && blob_y < (page_height * 0.8))
+                    {
+
+                        string dash_text1 = Regex.Replace(page_ref.GetText(), @"[^0-9a-zA-Z]+", ".");
+                        string dash_text2 = Regex.Replace(page_com.GetText(), @"[^0-9a-zA-Z]+", ".");
+
+                        string date = GetFirstDateFromString(dash_text1).ToString();
+                        string date2 = GetFirstDateFromString(dash_text2).ToString();
+                        double check_string_sim = similarity.Similarity(date, date2);
+                        double check_string_miss_sim = similarity.Distance(dash_text1, dash_text2);
+                        double check_damero = snd_similarity.Distance(dash_text1, dash_text2);
+                        int word_length = (dash_text1.Length + dash_text2.Length) / 2;
+                        if (check_string_miss_sim >= 0.1 && check_string_miss_sim <= 0.5 && check_damero <= 3.0 && word_length <20)
+                        {
+                            if (blob_handled == false)
+                            {
+                                bool drawn = false;
+                                foreach (Blob x in blobs_large)
+                                {
+                                    if (detected_Largeblobs.Contains(x.ID.ToString()))
+                                    {
+                                        drawn = x.Rectangle.IntersectsWith(b.Rectangle);
+                                        if (drawn == true) { break; }
+                                    }
+                                }
+                                if (drawn == false)
+                                {
+                                    gCom.DrawRectangle(Pens, b.Rectangle);
+                                    gRef.DrawRectangle(Pens, b.Rectangle);
+                                    detected_blobs.Add(b.ID.ToString());
+                                    counter++; blob_handled = true;
+                                }
+                            }
+                            continue;
+                        }
+                        //else if (check_string_sim>0.75) { continue; }
+                    }
+
+                    for (int i = 0; i < block1.Count; i++)
+                    {
+                        string text1 = (Regex.Replace(block1[i], @"\s", "")).ToLower();
+                        string text2 = (Regex.Replace(block2[i], @"\s", "")).ToLower();
+                        double Similarity_val = similarity.Distance(text1, text2);                        
+                        string var1 = Regex.Replace(text1, @"[^0-9a-zA-Z]+", " ");
+                        string var2 = Regex.Replace(text2, @"[^0-9a-zA-Z]+", " ");
+                        var first = var1.Split(' ');
+                        var second = var2.Split(' ');
+                        var primary = first.Length > second.Length ? first : second;
+                        var secondary = primary == second ? first : second;
+                        var difference = primary.Intersect(secondary).ToArray();
+
+                        List<string> list1 = first.ToList();
+                        List<string> list2 = second.ToList();
+
+                        for (int a = 0; a < difference.Length; a++)
+                        {
+                            try
+                            {
+                                var1 = var1.Replace(difference[a], "");
+                                var2 = var2.Replace(difference[a], "");
+                            }
+                            catch (Exception) { }
+                        }
+                        double simv = jaro.Distance(var1, var2);
+                        double avg_var = (var1.Length + var2.Length) / 2;
+                        double damerau_v = snd_similarity.Distance(var1, var2);
+                        double percent = damerau_v / avg_var;
+                        if ((Similarity_val >= 0.50 && percent > 0.7) || (Similarity_val >= 0.25 && percent >= 0.4))
+                        {
+                            distance += Similarity_val;
+                            if (Similarity_val >= 0.3)
+                            {
+                                double swap_text = jaro.Distance(text1, text2);
+                                if(swap_text < 0.5) { swap_count++; meaningful = true; }
+                            } 
+                        }
+                        if (Similarity_val < 0.5 && Similarity_val != 0 && Similarity_val > 0.1)
+                        {
+                            bool diff_name = false;
+                            math_jaro = jaro.Similarity(text1, text2);
+                            if (math_jaro > 0.70 && math_jaro <= 0.98)
+                            {
+                                var firstzx = block1[i].Split(' ');
+                                var secondzx = block2[i].Split(' ');
+                                var primaryzx = firstzx.Length > secondzx.Length ? firstzx : secondzx;
+                                var secondaryzx = primaryzx == secondzx ? firstzx : secondzx;
+                                var differencezx = primaryzx.Except(secondaryzx).ToArray();
+                                try
+                                {
+                                    diff_name = Processor.CheckString(difference[0]);
+                                }
+                                catch (Exception)
+                                {
+                                    double levenstein = similarity.Distance(text1, text2);
+                                    if (levenstein > 0.6)
+                                    {
+                                        diff_name = true;
+                                    }
+                                    else
+                                    {
+                                        diff_name = false;
+                                        break;
+                                    }
+                                }
+                                if (diff_name == false)
+                                {
+
+                                    string dash_text1 = (Regex.Replace(page_ref.GetText(), @"\t|\n|\r", "")).ToLower();
+                                    string dash_text2 = (Regex.Replace(page_com.GetText(), @"\t|\n|\r", "")).ToLower();
+                                    string digitOnly1 = Regex.Replace(dash_text1, "[^0-9]", "");
+                                    string digitOnly2 = Regex.Replace(dash_text2, "[^0-9]", "");
+                                    double levenstein = similarity.Distance(text1, text2);
+                                    double levenstein_num = similarity.Similarity(digitOnly1, digitOnly2);
+                                    if (levenstein > 0.6) { diff_name = true; }
+                                    //if (levenstein_num >0.6) { diff_name = true; }
+                                }
+                            }
+                            if (diff_name == true)
+                            {
+                                if (blob_handled == false)
+                                {
+                                    bool drawn = false;
+                                    foreach (Blob x in blobs_large)
+                                    {
+                                        if (detected_Largeblobs.Contains(x.ID.ToString()))
+                                        {
+                                            drawn = x.Rectangle.IntersectsWith(b.Rectangle);
+                                            if (drawn == true) { break; }
+                                        }
+                                    }
+                                    if (drawn == false)
+                                    {
+                                        gCom.DrawRectangle(Pens, b.Rectangle);
+                                        gRef.DrawRectangle(Pens, b.Rectangle);
+                                        detected_blobs.Add(b.ID.ToString());
+                                        counter++; blob_handled = true;
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                        if (percent >= 0.3 && percent <= 0.7)
+                        {
+                            double swap_text = jaro.Distance(text1, text2);
+                            double swap_sim = similarity.Similarity(text1, text2);
+                            double swap_dis = similarity.Distance(text1, text2);
+                            double avg_varx = (block1[i].Length + block2[i].Length) / 2;
+                            double damerau_vx = snd_similarity.Distance(block1[i], block2[i]);
+                            double percentx = damerau_vx / avg_varx;
+                            if (percentx > 0.9 && percentx != 1) { continue; }
+                            string alpha1 = Regex.Replace(block1[i], @"[^0-9a-zA-Z]+", " ");
+                            string alpha2 = Regex.Replace(block2[i], @"[^0-9a-zA-Z]+", " ");
+                            alpha1 = Regex.Replace(alpha1, @"[\d-]", string.Empty).Trim();
+                            alpha2 = Regex.Replace(alpha2, @"[\d-]", string.Empty).Trim();
+                            double check_alpha = jaro.Distance(alpha1, alpha2);
+                            if (check_alpha<=0.7)
+                            {                                
+                                var array_alpha1 = alpha1.Split(' ');
+                                var array_alpha2 = alpha2.Split(' ');
+
+                                List<string> list_alpha1 = array_alpha1.ToList();
+                                List<string> list_alpha2 = array_alpha2.ToList();
+
+                                var order = list_alpha1.SequenceEqual(list_alpha2);
+                                if (order == false && (list_alpha1.Count == list_alpha2.Count))
+                                {
+                                    if (blob_handled == false)
+                                    {
+                                        bool drawn = false;
+                                        foreach (Blob x in blobs_large)
+                                        {
+                                            if (detected_Largeblobs.Contains(x.ID.ToString()))
+                                            {
+                                                drawn = x.Rectangle.IntersectsWith(b.Rectangle);
+                                                if (drawn == true) { break; }
+                                            }
+                                        }
+                                        if (drawn == false)
+                                        {
+                                            gCom.DrawRectangle(Pens, b.Rectangle);
+                                            gRef.DrawRectangle(Pens, b.Rectangle);
+                                            detected_blobs.Add(b.ID.ToString());
+                                            counter++; blob_handled = true;
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                            if (swap_text < 0.5&&swap_sim >=0.5 ||swap_sim>=0.6&&swap_dis<=0.6)
+                            {
+                                distance += Similarity_val; swap_count++; meaningful = true;
+                            }
+                        }
+                    }
+                    if ((text_meaning / count_jaro) > 0.85)
+                    {
+                        meaningful = true;
+                    }
+                    double swapper = distance / swap_count;
+                    if ((distance / conver) > 0.50 || (meaningful == true && swapper >= 0.35)) //was 0.30 before tva
+                    {
+                        if (blob_handled == false)
+                        {
+                            bool drawn = false;
+                            foreach (Blob x in blobs_large)
+                            {
+                                if (detected_Largeblobs.Contains(x.ID.ToString()))
+                                {
+                                    drawn = x.Rectangle.IntersectsWith(b.Rectangle);
+                                    if (drawn == true) { break; }
+                                }
+                            }
+                            if (drawn == false)
+                            {
+                                gCom.DrawRectangle(Pens, b.Rectangle);
+                                gRef.DrawRectangle(Pens, b.Rectangle);
+                                detected_blobs.Add(b.ID.ToString());
+                                counter++; blob_handled = true;
+                            }
+                        }
+                        continue;
+                    }
+                }                
+                else
+                {
+                    int blob_y = b.Rectangle.Y;
+                    int blob_x = b.Rectangle.X;
+                    int page_height = bitmap.Height;
+                    int page_width = bitmap.Width;
+                    if (blob_y > (page_height * 0.70))
+                    {
+                        string dash_text1 = (Regex.Replace(page_ref.GetText(), @"\t|\n|\r", "")).ToLower();
+                        string dash_text2 = (Regex.Replace(page_com.GetText(), @"\t|\n|\r", "")).ToLower();
+                        string aldash_text1 = Regex.Replace(dash_text1, @"[\d-]", string.Empty).Trim();
+                        string aldash_text2 = Regex.Replace(dash_text2, @"[\d-]", string.Empty).Trim();
+                        int text_size = (aldash_text1.Length + aldash_text2.Length) / 2;
+                        if (text_size < 20) { continue; }
+                        else
+                        {
+                            double check_dist = similarity.Distance(aldash_text1, aldash_text2);
+                            double check_sim = similarity.Similarity(dash_text1, dash_text2);
+                            if (check_dist < 0.4 && check_sim > 0.5) { continue; }
+                        }
+                    }
+                    if (blob_x < (page_width * 0.5) && blob_y < (page_height * 0.4))
+                    {
+                        string dash_text1 = (Regex.Replace(page_ref.GetText(), @"\t|\n|\r", "")).ToLower();
+                        string dash_text2 = (Regex.Replace(page_com.GetText(), @"\t|\n|\r", "")).ToLower();
+                        dash_text1 = Regex.Replace(dash_text1, @"[^0-9a-zA-Z]+", "").Trim();
+                        dash_text2 = Regex.Replace(dash_text2, @"[^0-9a-zA-Z]+", "").Trim();
+                        string aldash_text1 = Regex.Replace(dash_text1, @"[\d-]", string.Empty).Trim();
+                        string aldash_text2 = Regex.Replace(dash_text2, @"[\d-]", string.Empty).Trim();
+                        int text_size = (aldash_text1.Length + aldash_text2.Length) / 2;
+                        if (aldash_text1.Contains("tva") == true || aldash_text2.Contains("tva") == true || text_size <= 25)
+                        {
+                            double check_dist = similarity.Distance(aldash_text1, aldash_text2);
+                            double check_sim = similarity.Similarity(dash_text1, dash_text2);
+                            if (check_dist < 0.4 && check_sim > 0.5) { continue; }
+                        }
+                    }
+                    double distance = 0.0;
+                    int block_count = Math.Max(block1.Count, block2.Count);
+                    for (int zi = 0; zi < block_count + 1; zi++)
+                    {
+                        try
+                        {
+                            string dash_text1 = (Regex.Replace(block1[zi], @"\s", "")).ToLower();
+                            string dash_text2 = (Regex.Replace(block2[zi], @"\s", "")).ToLower();
+                            double dash_Similarity_val = similarity.Distance(dash_text1, dash_text2);
+                            if (dash_Similarity_val > 0.50)
+                            {
+                                distance += dash_Similarity_val;
+                            }
+                        }
+                        catch (Exception)
+                        {
+                            int blob_dy = b.Rectangle.Y;
+                            int blob_dx  = b.Rectangle.X;
+                            int dpage_height = bitmap.Height;
+                            int dpage_width = bitmap.Width;
+                            bool small_block = false;
+                            if (blob_dy <= (0.4 * dpage_height)) { small_block = true; }
+                            bool meaningful = false;
+                            string dash_text1 = (Regex.Replace(page_ref.GetText(), @"\t|\n|\r", "")).ToLower();
+                            string dash_text2 = (Regex.Replace(page_com.GetText(), @"\t|\n|\r", "")).ToLower();
+                            //check if blanked
+                            string blank1 = (Regex.Replace(dash_text1, @"\s", "")).ToLower();
+                            string blank2 = (Regex.Replace(dash_text2, @"\s", "")).ToLower();
+                            double blank_Similarity_val = similarity.Distance(blank1, blank2);
+                            if (blank_Similarity_val < 0.25) { continue; }
+                            double dash_Similarity_val = similarity.Distance(dash_text1, dash_text2);
+                            var lcs_metric = lcs.Distance(dash_text1, dash_text2);
+                            var damerau_val = snd_similarity.Distance(dash_text1, dash_text2);
+                            var dam_high = Math.Max(dash_text1.Length, dash_text2.Length);
+                            var dam = damerau_val / dam_high;
+                            double weight = (dash_Similarity_val + lcs_metric + dam) / 3.0;
+                            if (weight > 0.50)
+                            {
+                                double lcms = jaro.Similarity(dash_text1, dash_text2);
+                                if (lcms < 0.75 && dash_Similarity_val > 0.6)
+                                {
+                                    meaningful = true;
+                                }
+                                else
+                                {
+                                    break;
+                                }
+                            }
+                            else if (weight < 0.5 && small_block == false )
+                            {
+                                var dam_high2 = Math.Max(dash_text1.Length, dash_text2.Length);
+                                var dam_low2 = Math.Min(dash_text1.Length, dash_text2.Length);
+                                double diffe = dam_high2 - dam_low2;
+                                var dam2 = diffe / dam_high2;
+                                if (dam2 > 0.35)
+                                {
+                                    meaningful = true;
+                                }
+                                else if (dam2 < 0.1) { break; }
+                                var jw = new LongestCommonSubsequence();
+                                double jw_val = jw.Distance(dash_text1, dash_text2);
+                                double avg = (dash_text1.Length + dash_text2.Length) / 2;
+                                double lcms = jaro.Similarity(dash_text1, dash_text2);
+                                if ((jw_val < avg) && lcms < 0.5)
+                                {
+                                    meaningful = true;
+                                }
+                            }
+                            if (((distance / block_count) > 0.50 && meaningful == true) || ((distance / block_count) > 0.80 || meaningful == true))
+                            {
+                                if (blob_handled == false)
+                                {
+                                    bool drawn = false;
+                                    foreach (Blob x in blobs_large)
+                                    {
+                                        if (detected_Largeblobs.Contains(x.ID.ToString()))
+                                        {
+                                            drawn = x.Rectangle.IntersectsWith(b.Rectangle);
+                                            if (drawn == true) { break; }
+                                        }
+                                    }
+                                    if (drawn == false)
+                                    {
+                                        gCom.DrawRectangle(Pens, b.Rectangle);
+                                        gRef.DrawRectangle(Pens, b.Rectangle);
+                                        detected_blobs.Add(b.ID.ToString());
+                                        counter++; blob_handled = true;
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    //Check Name of Invoices
+                    int x_coor = b.Rectangle.X;
+                    int y_coor = b.Rectangle.Y;
+                    int max_height = bitmap.Height;
+                    int max_width = bitmap.Width;
+                    if (y_coor <= (max_height * 0.4))
+                    {
+                        List<string> new_block1 = new List<string>();
+                        List<string> new_block2 = new List<string>();
+                        foreach (string a in block1)
+                        {
+                            if (a.Length > 10) { new_block1.Add(a); }
+                        }
+                        foreach (string a in block2)
+                        {
+                            if (a.Length > 10) { new_block2.Add(a); }
+                        }
+                        try
+                        {
+                            for (int i = 0; i < new_block1.Count; i++)
+                            {
+                                string alpha1 = Regex.Replace(new_block1[i], @"[^0-9a-zA-Z]+", " ");
+                                string alpha2 = Regex.Replace(new_block2[i], @"[^0-9a-zA-Z]+", " ");
+                                alpha1 = Regex.Replace(alpha1, @"[\d-]", string.Empty).Trim();
+                                alpha2 = Regex.Replace(alpha2, @"[\d-]", string.Empty).Trim();
+                                double check_alpha = jaro.Distance(alpha1, alpha2);
+                                if (check_alpha <= 0.8 && check_alpha != 0)
+                                {
+                                    var array_alpha1 = alpha1.Split(' ');
+                                    var array_alpha2 = alpha2.Split(' ');
+
+                                    List<string> list_alpha1 = array_alpha1.ToList();
+                                    List<string> list_alpha2 = array_alpha2.ToList();
+
+                                    var order = list_alpha1.SequenceEqual(list_alpha2);
+                                    double s = 0;
+                                    for (int j = 0; j < list_alpha1.Count; j++)
+                                    {
+                                        s += similarity.Similarity(list_alpha1[i], list_alpha2[i]);
+                                    }
+                                    double avg_s = s / list_alpha1.Count;
+                                    if ((order == false && avg_s < 0.5))
+                                    {
+                                        if (blob_handled == false)
+                                        {
+                                            bool drawn = false;
+                                            foreach (Blob x in blobs_large)
+                                            {
+                                                if (detected_Largeblobs.Contains(x.ID.ToString()))
+                                                {
+                                                    drawn = x.Rectangle.IntersectsWith(b.Rectangle);
+                                                    if (drawn == true) { break; }
+                                                }
+                                            }
+                                            if (drawn == false)
+                                            {
+                                                gCom.DrawRectangle(Pens, b.Rectangle);
+                                                gRef.DrawRectangle(Pens, b.Rectangle);
+                                                detected_blobs.Add(b.ID.ToString());
+                                                counter++; blob_handled = true;
+                                            }
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception) { }
+                    }
+                }
+                //Check Name of Invoices
+                int bx_coor = b.Rectangle.X;
+                int by_coor = b.Rectangle.Y;
+                int bmax_height = bitmap.Height;
+                int bmax_width = bitmap.Width;
+                
+                if (by_coor >= (bmax_height * 0.4) && by_coor <= (bmax_height * 0.8))
+                {
+                    List<string> new_block1 = new List<string>();
+                    List<string> new_block2 = new List<string>();
+                    foreach (string a in block1)
+                    {
+                        if (a.Length < 15) { new_block1.Add(a); }
+                    }
+                    foreach (string a in block2)
+                    {
+                        if (a.Length < 15) { new_block2.Add(a); }
+                    }
+                    try
+                    {
+                        for (int i = 0; i < new_block1.Count; i++)
+                        {
+                            string alpha1 = Regex.Replace(new_block1[i], "[^0-9a-zA-Z]+", " ");
+                            string alpha2 = Regex.Replace(new_block2[i], "[^0-9a-zA-Z]+", " ");
+                            alpha1 = Regex.Replace(alpha1, @"[^0-9.]", string.Empty).Trim();
+                            alpha2 = Regex.Replace(alpha2, @"[^0-9.]", string.Empty).Trim();
+                            double check_alpha = jaro.Distance(alpha1, alpha2);
+                            if (check_alpha <= 0.8)
+                            {
+                                var array_alpha1 = alpha1.Split(' ');
+                                var array_alpha2 = alpha2.Split(' ');
+
+                                List<string> list_alpha1 = array_alpha1.ToList();
+                                List<string> list_alpha2 = array_alpha2.ToList();
+
+                                var order = list_alpha1.SequenceEqual(list_alpha2);
+                                if (order == false && (list_alpha1.Count == list_alpha2.Count))
+                                {
+                                    if (blob_handled == false)
+                                    {
+                                        bool drawn = false;
+                                        foreach (Blob x in blobs_large)
+                                        {
+                                            if (detected_Largeblobs.Contains(x.ID.ToString()))
+                                            {
+                                                drawn = x.Rectangle.IntersectsWith(b.Rectangle);
+                                                if (drawn == true) { break; }
+                                            }
+                                        }
+                                        if (drawn == false)
+                                        {
+                                            gCom.DrawRectangle(Pens, b.Rectangle);
+                                            gRef.DrawRectangle(Pens, b.Rectangle);
+                                            detected_blobs.Add(b.ID.ToString());
+                                            counter++; blob_handled = true;
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception) { }
+                }                
+                engine2.Dispose();
+                engine1.Dispose();
+                croppedImage_ref.Dispose();
+                croppedImage_com.Dispose();
+            }
+
+            bool session = false;
+            string namer = names[val];
+            string saver = folderpath + "\\" + namer;
+            string path1 = folderpath + "\\" + names[0] + ".png";
+            string path2 = folderpath + "\\" + names[1] + ".png";
+            do
+            {
+                session = savePic(img1, img2, session, path1, path2);
+            } while (session == false);
+            g.Dispose();
+            img1.Dispose();
+            img2.Dispose();
+            bitmap.Dispose();
+            ref_img.Dispose();
+            com_img.Dispose();
+            return counter;
+        }
